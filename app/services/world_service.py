@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import random
 from datetime import UTC, datetime, timedelta
 
@@ -13,6 +14,7 @@ from app.services.admin_definitions import (
     event_definitions,
     get_balance_number,
     module_definitions_map,
+    resource_definitions_map,
     specialization_definitions_map,
 )
 from app.services.utils import change_resource, inventory_map
@@ -135,22 +137,64 @@ def process_due_stations(db: Session) -> int:
     return count
 
 
+def _tick_fraction(reference_seconds: float) -> float:
+    if reference_seconds <= 0:
+        return 1.0
+    return max(0.0, min(1.0, settings.world_tick_seconds / reference_seconds))
+
+
+def _sanitize_market_price(value: float, minimum: float, maximum: float, fallback: float) -> float:
+    if not math.isfinite(value) or value <= 0:
+        return fallback
+    return min(maximum, max(minimum, value))
+
+
+def _sanitize_market_history(history: list[float] | None, minimum: float, maximum: float, fallback: float) -> list[float]:
+    cleaned: list[float] = []
+    for item in history or []:
+        try:
+            value = float(item)
+        except (TypeError, ValueError):
+            continue
+        cleaned.append(round(_sanitize_market_price(value, minimum, maximum, fallback), 2))
+    return cleaned[-19:]
+
+
 def refresh_market(db: Session) -> None:
     drift_min = get_balance_number(db, "market_price_drift_min", -0.04)
     drift_max = get_balance_number(db, "market_price_drift_max", 0.04)
+    mean_reversion_per_minute = get_balance_number(db, "market_mean_reversion_per_minute", 0.25)
+    floor_multiplier = get_balance_number(db, "market_price_floor_multiplier", 0.35)
+    cap_multiplier = get_balance_number(db, "market_price_cap_multiplier", 6.0)
+    event_multiplier_cap = get_balance_number(db, "market_event_multiplier_cap", 3.0)
+    tick_fraction = _tick_fraction(60.0)
+    resource_map = resource_definitions_map(db)
     sectors = db.scalars(select(Sector).options(joinedload(Sector.market_states), joinedload(Sector.world_events))).unique().all()
     now = datetime.now(UTC)
     for sector in sectors:
-        active_events = [event for event in sector.world_events if event.ends_at >= now]
+        active_events = [event for event in sector.world_events if _as_utc(event.ends_at) >= now]
         for market in sector.market_states:
+            base_price = max(1.0, float(resource_map.get(market.resource, {}).get("base_price", market.price or 1.0) or 1.0))
             multiplier = 1.0
             for event in active_events:
-                multiplier *= event.market_effects.get(market.resource, 1.0)
-            drift = random.uniform(drift_min, drift_max)
-            new_price = max(1.0, round(market.price * multiplier * (1 + drift), 2))
-            history = (market.history or [])[-19:]
+                try:
+                    effect = float(event.market_effects.get(market.resource, 1.0))
+                except (TypeError, ValueError):
+                    effect = 1.0
+                multiplier *= max(0.25, effect)
+            multiplier = min(max(1.0 / max(event_multiplier_cap, 1.0), multiplier), max(event_multiplier_cap, 1.0))
+            fair_price = base_price * multiplier
+            minimum_price = max(1.0, base_price * max(0.05, floor_multiplier) * min(1.0, multiplier))
+            maximum_price = max(minimum_price, base_price * max(floor_multiplier + 0.1, cap_multiplier) * max(1.0, multiplier))
+            previous_price = _sanitize_market_price(float(market.price), minimum_price, maximum_price, fair_price)
+            drift = random.uniform(drift_min, drift_max) * tick_fraction
+            drifted_price = previous_price * max(0.1, 1 + drift)
+            reversion = max(0.0, mean_reversion_per_minute) * tick_fraction
+            new_price = drifted_price + (fair_price - drifted_price) * reversion
+            new_price = round(_sanitize_market_price(new_price, minimum_price, maximum_price, fair_price), 2)
+            history = _sanitize_market_history(market.history, minimum_price, maximum_price, fair_price)
             history.append(new_price)
-            market.trend = round(new_price - market.price, 2)
+            market.trend = round(new_price - previous_price, 2)
             market.price = new_price
             market.history = history
 
@@ -178,15 +222,29 @@ def _conditions_match(db: Session, sector: Sector, conditions: dict[str, object]
 
 def maybe_spawn_event(db: Session) -> WorldEvent | None:
     sector = db.scalar(select(Sector))
-    spawn_chance = get_balance_number(db, "world_event_spawn_chance", 0.35)
-    if not sector or random.random() > spawn_chance:
+    spawn_chance = min(1.0, max(0.0, get_balance_number(db, "world_event_spawn_chance", 0.35)))
+    per_tick_spawn_chance = 1 - (1 - spawn_chance) ** _tick_fraction(60.0)
+    if not sector or random.random() > per_tick_spawn_chance:
         return None
+    now = datetime.now(UTC)
     definitions = [item for item in event_definitions(db) if item.get("enabled", True)]
     definitions = [item for item in definitions if _conditions_match(db, sector, dict(item.get("conditions", {})))]
+    filtered_definitions: list[dict[str, object]] = []
+    for item in definitions:
+        key = str(item.get("key", ""))
+        cooldown_minutes = max(0, int(item.get("cooldown_minutes", 0) or 0))
+        matching_events = [event for event in sector.world_events if event.key == key]
+        if any(_as_utc(event.ends_at) >= now for event in matching_events):
+            continue
+        cooldown_boundary = now - timedelta(minutes=cooldown_minutes)
+        if cooldown_minutes and any(_as_utc(event.ends_at) >= cooldown_boundary for event in matching_events):
+            continue
+        filtered_definitions.append(item)
+    definitions = filtered_definitions
     if not definitions:
         return None
-    template = random.choice(definitions)
-    now = datetime.now(UTC)
+    weights = [max(0.0, float(item.get("weight", 1.0) or 1.0)) for item in definitions]
+    template = random.choices(definitions, weights=weights, k=1)[0]
     event = WorldEvent(
         sector_id=sector.id,
         key=str(template["key"]),
