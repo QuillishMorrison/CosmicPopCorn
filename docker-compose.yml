@@ -44,6 +44,8 @@ services:
     ports:
       - "8080:80"
     restart: unless-stopped
+    environment:
+      - VITE_API_URL=http://155.212.135.193:8000
 
 volumes:
   postgres_data:
