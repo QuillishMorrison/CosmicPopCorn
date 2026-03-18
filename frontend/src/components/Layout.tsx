@@ -50,7 +50,8 @@ export function Layout() {
       ? [...links, { to: '/admin', label: 'Admin' }]
       : links
   const snapshot = useLiveDataStore((state) => state.snapshot)
-  const fallbackStation = useStation({ enabled: true, refetchInterval: 1000 })
+  const shouldPollStation = !isDashboardRoute || !snapshot?.station
+  const fallbackStation = useStation({ enabled: shouldPollStation, refetchInterval: shouldPollStation ? 1000 : false })
   const preview = useActionPreviewStore((state) => state.preview)
   const inventories = isDashboardRoute
     ? snapshot?.station.inventories ?? fallbackStation.data?.inventories ?? []

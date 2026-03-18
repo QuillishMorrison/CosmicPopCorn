@@ -72,7 +72,7 @@ export function AppRouter() {
 
   useEffect(() => {
     if (accessToken) {
-      if (!user?.roles?.length) {
+      if (!user || !Array.isArray(user.roles)) {
         void api
           .get<{ id: string; email: string; username: string; roles?: string[] }>('/auth/me')
           .then((me) => setUser(me))

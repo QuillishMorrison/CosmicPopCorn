@@ -43,7 +43,7 @@ export function AuthPage() {
               station_name: form.get('station_name'),
               specialization: form.get('specialization')
             }
-      const data = await api.post<{ access_token: string; user: { id: string; email: string; username: string } }>(
+      const data = await api.post<{ access_token: string; user: { id: string; email: string; username: string; roles?: string[] } }>(
         mode === 'login' ? '/auth/login' : '/auth/register',
         payload
       )

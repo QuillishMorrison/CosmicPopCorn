@@ -2,6 +2,7 @@ import { useEffect, useMemo } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Button, Card, Progress, SectionTitle, Sparkline, StatPill, Tooltip } from '../../components/ui'
 import { useActionFeedback } from '../../hooks/useActionFeedback'
+import { useMarket, useNpcContracts, useReports, useStation } from '../../hooks/useGameData'
 import { useLiveDashboard } from '../../hooks/useLiveDashboard'
 import { starterGuide } from '../../lib/gameContent'
 import { api } from '../../lib/api'
@@ -94,6 +95,11 @@ export function DashboardPage() {
   const clearPreview = useActionPreviewStore((state) => state.clearPreview)
   useLiveDashboard()
   const live = useLiveDataStore((state) => state.snapshot)
+  const liveConnected = useLiveDataStore((state) => state.connected)
+  const stationQuery = useStation({ enabled: !liveConnected, refetchInterval: liveConnected ? false : 3000 })
+  const reportsQuery = useReports({ enabled: !liveConnected, refetchInterval: liveConnected ? false : 5000 })
+  const marketQuery = useMarket({ enabled: !liveConnected, refetchInterval: liveConnected ? false : 5000 })
+  const contractsQuery = useNpcContracts({ enabled: !liveConnected, refetchInterval: liveConnected ? false : 5000 })
 
   const handleAction = async (action: () => Promise<unknown>, successMessage: string) => {
     try {
@@ -105,14 +111,14 @@ export function DashboardPage() {
     }
   }
 
-  const data = live?.station
-  const reportItems = live?.reports
-  const marketItems = live?.market
-  const contractItems = live?.npc_contracts
+  const data = live?.station ?? stationQuery.data
+  const reportItems = live?.reports ?? reportsQuery.data
+  const marketItems = live?.market ?? marketQuery.data
+  const contractItems = live?.npc_contracts ?? contractsQuery.data
   const latestReport = reportItems?.[0]
   const topMarket = marketItems ?? []
   const topContracts = contractItems ?? []
-  const visibleContracts = live?.npc_contract_visibility ?? 2
+  const visibleContracts = live?.npc_contract_visibility ?? (topContracts.length || 2)
   const resources = useMemo(
     () => Object.fromEntries((data?.inventories ?? []).map((item) => [item.resource, item.amount])),
     [data]
@@ -120,6 +126,7 @@ export function DashboardPage() {
 
   useEffect(() => clearPreview, [clearPreview])
 
+  if (!data && stationQuery.isError) return <div className="text-textMute">{t.loadError}</div>
   if (!data) return <div className="text-textMute">{t.loading}</div>
 
   const moduleCatalog = data.module_catalog ?? []
