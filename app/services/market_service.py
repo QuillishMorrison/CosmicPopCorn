@@ -9,7 +9,7 @@ from app.services.utils import change_resource, format_missing_resources, invent
 
 
 def get_market_state(db: Session, sector_id: str) -> list[MarketState]:
-    return db.scalars(select(MarketState).where(MarketState.sector_id == sector_id)).all()
+    return db.scalars(select(MarketState).where(MarketState.sector_id == sector_id).order_by(MarketState.id)).all()
 
 
 def execute_market_trade(db: Session, station: Station, resource: str, quantity: float, side: str) -> None:
