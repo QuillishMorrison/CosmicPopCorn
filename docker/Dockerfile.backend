@@ -12,4 +12,4 @@ COPY .env.example ./
 RUN pip install --no-cache-dir ".[postgres]"
 
 EXPOSE 8000
-CMD ["python", "-m", "app.main"]
+CMD ["sh", "-c", "python -m alembic upgrade head && python -m app.main"]

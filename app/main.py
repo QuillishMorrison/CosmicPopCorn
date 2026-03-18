@@ -23,7 +23,8 @@ settings.chat_upload_path.mkdir(parents=True, exist_ok=True)
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    create_schema()
+    if settings.is_dev or settings.normalized_database_url.startswith("sqlite"):
+        create_schema()
     with SessionLocal() as db:
         bootstrap_data(db)
         if settings.dev_seed_enabled:
