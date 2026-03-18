@@ -1,0 +1,10 @@
+.env
+.venv/
+pycache/
+.pytest_cache/
+pytest-cache-files-*/
+frontend/node_modules/
+frontend/dist/
+sector_relay.db
+test_sector_relay.db
+media/

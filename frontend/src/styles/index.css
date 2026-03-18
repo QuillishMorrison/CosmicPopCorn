@@ -1,0 +1,97 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  overflow-x: hidden;
+  background: #0b1118;
+  color: #ecf3ff;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  overflow-x: hidden;
+}
+
+button,
+input,
+select,
+textarea {
+  min-width: 0;
+}
+
+p,
+span,
+div,
+h1,
+h2,
+h3 {
+  overflow-wrap: anywhere;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+.text-balance {
+  text-wrap: balance;
+}
+
+.text-pretty {
+  text-wrap: pretty;
+}
+
+input,
+select,
+button {
+  font: inherit;
+}
+
+input,
+select {
+  color: inherit;
+}
+
+.inventory-delta {
+  position: absolute;
+  pointer-events: none;
+  font-size: 10px;
+  line-height: 1;
+  opacity: 0;
+  animation: inventory-delta-float 1.1s ease-out forwards;
+}
+
+.inventory-delta-positive {
+  color: rgba(110, 231, 183, 0.82);
+}
+
+.inventory-delta-negative {
+  color: rgba(248, 113, 113, 0.82);
+}
+
+@keyframes inventory-delta-float {
+  0% {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+
+  15% {
+    opacity: 0.9;
+    transform: translateY(0);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateY(-12px);
+  }
+}
