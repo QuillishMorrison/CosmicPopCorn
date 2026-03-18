@@ -8,7 +8,7 @@ services:
       POSTGRES_USER: sectorrelay
       POSTGRES_PASSWORD: sectorrelay
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -20,7 +20,7 @@ services:
   redis:
     image: redis:7-alpine
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     profiles: ["optional"]
 
   backend:
@@ -28,6 +28,9 @@ services:
       context: .
       dockerfile: docker/Dockerfile.backend
     env_file: .env
+    environment:
+      API_PORT: 8000
+      DATABASE_URL: postgresql+psycopg://sectorrelay:sectorrelay@postgres:5432/sectorrelay
     depends_on:
       postgres:
         condition: service_healthy
@@ -44,8 +47,6 @@ services:
     ports:
       - "8080:80"
     restart: unless-stopped
-    environment:
-      - VITE_API_URL=http://155.212.135.193:8000
 
 volumes:
   postgres_data:
