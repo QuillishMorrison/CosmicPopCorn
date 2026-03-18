@@ -8,8 +8,9 @@ import { starterGuide } from '../../lib/gameContent'
 import { api } from '../../lib/api'
 import { describeResource, labelForResource, labelForSpecialization } from '../../lib/i18n'
 import { useActionPreviewStore } from '../../store/actionPreviewStore'
+import { MAX_HUB_MARKET_PINS, useHubMarketPinsStore } from '../../store/marketPinsStore'
 import { useLiveDataStore } from '../../store/liveDataStore'
-import type { ModuleDefinition } from '../../types/game'
+import type { MarketRow, ModuleDefinition } from '../../types/game'
 
 const t = {
   loading: '\u0417\u0430\u0433\u0440\u0443\u0437\u043a\u0430 \u0441\u0442\u0430\u043d\u0446\u0438\u0438...',
@@ -66,7 +67,9 @@ const t = {
   actionPartsTitle: 'Пополнить детали',
   actionContractTitle: 'Забрать быстрый контракт',
   actionBuyParts: 'Купить детали',
-  actionAcceptContract: 'Выполнить контракт'
+  actionAcceptContract: 'Выполнить контракт',
+  marketPinnedHint: 'Показываются закреплённые позиции. Выбери их на странице «Рынок».',
+  marketPinnedFallback: 'Закреплений пока нет: показываем первые 3 позиции.'
 }
 
 function formatAmount(value: number) {
@@ -100,6 +103,10 @@ export function DashboardPage() {
   const reportsQuery = useReports({ enabled: !liveConnected, refetchInterval: liveConnected ? false : 5000 })
   const marketQuery = useMarket({ enabled: !liveConnected, refetchInterval: liveConnected ? false : 5000 })
   const contractsQuery = useNpcContracts({ enabled: !liveConnected, refetchInterval: liveConnected ? false : 5000 })
+  const stationId = (live?.station ?? stationQuery.data)?.id ?? ''
+  const pinnedResources = useHubMarketPinsStore((state) =>
+    stationId ? (state.pinsByStation[stationId] ?? []) : []
+  )
 
   const handleAction = async (action: () => Promise<unknown>, successMessage: string) => {
     try {
@@ -116,9 +123,23 @@ export function DashboardPage() {
   const marketItems = live?.market ?? marketQuery.data
   const contractItems = live?.npc_contracts ?? contractsQuery.data
   const latestReport = reportItems?.[0]
-  const topMarket = marketItems ?? []
   const topContracts = contractItems ?? []
   const visibleContracts = live?.npc_contract_visibility ?? (topContracts.length || 2)
+  const hubMarket = useMemo(() => {
+    const rows = marketItems ?? []
+    if (!rows.length) {
+      return []
+    }
+    if (!pinnedResources.length) {
+      return rows.slice(0, MAX_HUB_MARKET_PINS)
+    }
+    const byResource = new Map(rows.map((row) => [row.resource, row]))
+    const pinnedRows = pinnedResources
+      .map((resource) => byResource.get(resource))
+      .filter((row): row is MarketRow => Boolean(row))
+      .slice(0, MAX_HUB_MARKET_PINS)
+    return pinnedRows.length ? pinnedRows : rows.slice(0, MAX_HUB_MARKET_PINS)
+  }, [marketItems, pinnedResources])
   const resources = useMemo(
     () => Object.fromEntries((data?.inventories ?? []).map((item) => [item.resource, item.amount])),
     [data]
@@ -491,9 +512,12 @@ export function DashboardPage() {
 
         <div className="space-y-4">
           <Card>
-            <SectionTitle title={t.market} />
+            <SectionTitle
+              title={t.market}
+              subtitle={pinnedResources.length ? t.marketPinnedHint : t.marketPinnedFallback}
+            />
             <div className="space-y-3">
-              {topMarket.map((row) => (
+              {hubMarket.map((row) => (
                 <div key={row.resource} className="rounded-xl border border-borderSoft bg-panelSoft p-3">
                   <div className="flex items-center justify-between">
                     <div>

@@ -6,6 +6,7 @@ import { useMarket, useStation } from '../../hooks/useGameData'
 import { api } from '../../lib/api'
 import { describeResource, labelForResource } from '../../lib/i18n'
 import { useActionPreviewStore } from '../../store/actionPreviewStore'
+import { MAX_HUB_MARKET_PINS, useHubMarketPinsStore } from '../../store/marketPinsStore'
 
 const t = {
   loading: '\u0417\u0430\u0433\u0440\u0443\u0437\u043a\u0430 \u0440\u044b\u043d\u043a\u0430...',
@@ -23,7 +24,11 @@ const t = {
     '\u0426\u0435\u043d\u0430 \u043f\u043b\u0430\u0432\u0430\u0435\u0442 \u043e\u0442 \u0441\u0434\u0435\u043b\u043e\u043a \u0438 \u0441\u043e\u0431\u044b\u0442\u0438\u0439 \u0441\u0435\u043a\u0442\u043e\u0440\u0430. \u0414\u0435\u0440\u0436\u0438 \u0434\u0435\u0444\u0438\u0446\u0438\u0442 \u043f\u043e\u0434 \u043a\u043e\u043d\u0442\u0440\u043e\u043b\u0435\u043c, \u0430 \u0438\u0437\u043b\u0438\u0448\u043a\u0438 \u0441\u0431\u0440\u0430\u0441\u044b\u0432\u0430\u0439 \u043d\u0430 \u043f\u0438\u043a\u0435.',
   priceNow: '\u0426\u0435\u043d\u0430 \u0441\u0435\u0439\u0447\u0430\u0441',
   tradeHint:
-    '\u0412\u044b\u0431\u0435\u0440\u0438 \u043a\u043d\u043e\u043f\u043a\u0443 \u043f\u043e\u043a\u0443\u043f\u043a\u0438 \u0438\u043b\u0438 \u043f\u0440\u043e\u0434\u0430\u0436\u0438, \u0447\u0442\u043e\u0431\u044b \u0432\u0435\u0440\u0445\u043d\u044f\u044f \u043f\u0430\u043d\u0435\u043b\u044c \u043f\u043e\u043a\u0430\u0437\u0430\u043b\u0430 \u0437\u0430\u0442\u0440\u0430\u0442\u044b \u0438 \u0434\u0435\u0444\u0438\u0446\u0438\u0442.'
+    '\u0412\u044b\u0431\u0435\u0440\u0438 \u043a\u043d\u043e\u043f\u043a\u0443 \u043f\u043e\u043a\u0443\u043f\u043a\u0438 \u0438\u043b\u0438 \u043f\u0440\u043e\u0434\u0430\u0436\u0438, \u0447\u0442\u043e\u0431\u044b \u0432\u0435\u0440\u0445\u043d\u044f\u044f \u043f\u0430\u043d\u0435\u043b\u044c \u043f\u043e\u043a\u0430\u0437\u0430\u043b\u0430 \u0437\u0430\u0442\u0440\u0430\u0442\u044b \u0438 \u0434\u0435\u0444\u0438\u0446\u0438\u0442.',
+  pinHint: 'Закрепи до 3 позиций для блока "Рынок" в хабе.',
+  pinInHub: 'Закрепить в хабе',
+  unpinFromHub: 'Убрать из хаба',
+  pinLimit: 'Можно закрепить только 3 позиции.'
 }
 
 export function MarketPage() {
@@ -38,6 +43,11 @@ export function MarketPage() {
     () => Object.fromEntries((station.data?.inventories ?? []).map((item) => [item.resource, item.amount])),
     [station.data]
   )
+  const stationId = station.data?.id ?? ''
+  const pinnedResources = useHubMarketPinsStore((state) =>
+    stationId ? (state.pinsByStation[stationId] ?? []) : []
+  )
+  const setPinnedResources = useHubMarketPinsStore((state) => state.setPinnedResources)
 
   useEffect(() => clearPreview, [clearPreview])
 
@@ -56,6 +66,24 @@ export function MarketPage() {
     }
   }
 
+  const handlePinToggle = (resource: string) => {
+    if (!stationId) {
+      return
+    }
+    if (pinnedResources.includes(resource)) {
+      setPinnedResources(
+        stationId,
+        pinnedResources.filter((item) => item !== resource)
+      )
+      return
+    }
+    if (pinnedResources.length >= MAX_HUB_MARKET_PINS) {
+      feedback.error(t.pinLimit)
+      return
+    }
+    setPinnedResources(stationId, [...pinnedResources, resource])
+  }
+
   if (!market.data || !station.data) return <div className="text-textMute">{t.loading}</div>
 
   return (
@@ -67,7 +95,7 @@ export function MarketPage() {
               <span>{t.title}</span>
             </Tooltip>
           }
-          subtitle={t.subtitle}
+          subtitle={`${t.subtitle} ${t.pinHint} (${pinnedResources.length}/${MAX_HUB_MARKET_PINS})`}
         />
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           <StatPill label={t.credits} value={String(Math.round(holdings.credits ?? 0))} />
@@ -100,6 +128,14 @@ export function MarketPage() {
                     <div className="text-sm text-textMute">
                       {t.onHand}: {Math.round(holdings[row.resource] ?? 0)}
                     </div>
+                    <Button
+                      type="button"
+                      variant={pinnedResources.includes(row.resource) ? 'primary' : 'ghost'}
+                      className="mt-2 min-h-0 px-3 py-1 text-xs"
+                      onClick={() => handlePinToggle(row.resource)}
+                    >
+                      {pinnedResources.includes(row.resource) ? t.unpinFromHub : t.pinInHub}
+                    </Button>
                   </div>
                   <div className={`text-right text-sm ${row.trend >= 0 ? 'text-accent' : 'text-danger'}`}>
                     <div>{row.price.toFixed(2)} {'\u043a\u0440.'}</div>

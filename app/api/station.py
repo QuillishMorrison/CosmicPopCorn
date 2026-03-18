@@ -34,7 +34,7 @@ def _live_snapshot(db: Session, user_id: str) -> dict[str, object]:
     db.refresh(station)
     market = [
         MarketStateView.model_validate(item).model_dump(mode="json")
-        for item in get_market_state(db, station.sector_id)[:3]
+        for item in get_market_state(db, station.sector_id)
     ]
     npc_contracts = [
         _serialize_contract(contract)

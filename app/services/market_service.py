@@ -4,16 +4,34 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import MarketState, MarketTransaction, Station
-from app.services.admin_definitions import get_balance_number, resource_definitions_map
+from app.services.admin_definitions import get_balance_number, market_resource_definitions_map
 from app.services.utils import change_resource, format_missing_resources, inventory_map
 
 
 def get_market_state(db: Session, sector_id: str) -> list[MarketState]:
-    return db.scalars(select(MarketState).where(MarketState.sector_id == sector_id).order_by(MarketState.id)).all()
+    resource_map = market_resource_definitions_map(db)
+    allowed_resources = list(resource_map.keys())
+    if not allowed_resources:
+        return []
+
+    items = db.scalars(
+        select(MarketState).where(MarketState.sector_id == sector_id, MarketState.resource.in_(allowed_resources))
+    ).all()
+
+    def _sort_key(item: MarketState) -> tuple[int, str]:
+        definition = resource_map.get(item.resource, {})
+        try:
+            sort_order = int(definition.get("sort_order", 1000))
+        except (TypeError, ValueError):
+            sort_order = 1000
+        return sort_order, item.resource
+
+    items.sort(key=_sort_key)
+    return items
 
 
 def execute_market_trade(db: Session, station: Station, resource: str, quantity: float, side: str) -> None:
-    if resource not in resource_definitions_map(db):
+    if resource not in market_resource_definitions_map(db):
         raise ValueError("Ресурс недоступен на рынке.")
 
     market = db.scalar(select(MarketState).where(MarketState.sector_id == station.sector_id, MarketState.resource == resource))

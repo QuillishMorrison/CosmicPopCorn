@@ -3,7 +3,7 @@ from __future__ import annotations
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Mapping
 
 from pydantic import ValidationError
 from sqlalchemy import select
@@ -184,6 +184,37 @@ def get_balance_number(db: Session, key: str, default: float) -> float:
 
 def resource_definitions_map(db: Session) -> dict[str, dict[str, Any]]:
     return {item["key"]: item for item in get_effective_definitions(db)["resources"]}
+
+
+def _resource_base_price(definition: Mapping[str, Any]) -> float:
+    try:
+        return float(definition.get("base_price", 0) or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def is_market_resource_definition(resource_key: str, definition: Mapping[str, Any]) -> bool:
+    if not definition.get("enabled", True):
+        return False
+
+    explicit_market_flag = definition.get("market_enabled")
+    if explicit_market_flag is not None:
+        return bool(explicit_market_flag)
+
+    return (
+        resource_key != "credits"
+        and bool(definition.get("is_public", True))
+        and bool(definition.get("is_visible", True))
+        and _resource_base_price(definition) > 0
+    )
+
+
+def market_resource_definitions_map(db: Session) -> dict[str, dict[str, Any]]:
+    return {
+        key: item
+        for key, item in resource_definitions_map(db).items()
+        if is_market_resource_definition(key, item)
+    }
 
 
 def module_definitions_map(db: Session) -> dict[str, dict[str, Any]]:

@@ -6,7 +6,7 @@ from app.db.base import Base
 from app.db.session import engine
 from app.models import AdminRoleKey, MarketState, Role, Sector, User, UserRole
 from app.schemas.auth import RegisterRequest
-from app.services.admin_definitions import resource_definitions_map
+from app.services.admin_definitions import market_resource_definitions_map
 from app.services.admin_service import ensure_roles_seeded, ensure_system_content_seeded
 from app.services.auth_service import register_user
 from app.services.meta_service import ensure_meta_catalog
@@ -25,12 +25,21 @@ def bootstrap_data(db: Session) -> None:
         sector = Sector(name="Астер Вейл", market_mode="balanced", market_mood="Стабильные потоки, узкие спреды.")
         db.add(sector)
         db.flush()
+    resource_map = market_resource_definitions_map(db)
+    valid_market_resources = set(resource_map.keys())
+    if valid_market_resources:
+        db.query(MarketState).filter(
+            MarketState.sector_id == sector.id,
+            MarketState.resource.notin_(valid_market_resources),
+        ).delete(synchronize_session=False)
+    else:
+        db.query(MarketState).filter(MarketState.sector_id == sector.id).delete(synchronize_session=False)
+
     existing_resources = {
         item.resource for item in db.scalars(select(MarketState).where(MarketState.sector_id == sector.id)).all()
     }
-    resource_map = resource_definitions_map(db)
     for resource, definition in resource_map.items():
-        if resource not in existing_resources and resource != "credits" and definition.get("enabled", True):
+        if resource not in existing_resources:
             base_price = float(definition.get("base_price", 10))
             db.add(
                 MarketState(

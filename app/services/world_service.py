@@ -13,8 +13,8 @@ from app.services.admin_definitions import (
     contract_template_definitions,
     event_definitions,
     get_balance_number,
+    market_resource_definitions_map,
     module_definitions_map,
-    resource_definitions_map,
     specialization_definitions_map,
 )
 from app.services.utils import change_resource, inventory_map
@@ -168,7 +168,7 @@ def refresh_market(db: Session) -> None:
     cap_multiplier = get_balance_number(db, "market_price_cap_multiplier", 6.0)
     event_multiplier_cap = get_balance_number(db, "market_event_multiplier_cap", 3.0)
     tick_fraction = _tick_fraction(60.0)
-    resource_map = resource_definitions_map(db)
+    resource_map = market_resource_definitions_map(db)
     sectors = db.scalars(select(Sector).options(joinedload(Sector.market_states), joinedload(Sector.world_events))).unique().all()
     now = datetime.now(UTC)
     for sector in sectors:

@@ -1,6 +1,7 @@
 import math
 from datetime import UTC, datetime, timedelta
 
+from app.db.init_db import bootstrap_data
 from app.db.session import SessionLocal
 from app.models import MarketState, Sector, Station, User
 from app.services.market_service import execute_market_trade
@@ -33,6 +34,38 @@ def test_market_roundtrip_does_not_print_money():
         execute_market_trade(db, station, "fuel", 10, "sell")
         after = inventory_map(station)
         assert after["credits"] < before["credits"]
+
+
+def test_market_state_excludes_non_market_resources(client):
+    login = client.post("/auth/login", json={"identity": "captain_one", "password": "Captain123"})
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    response = client.get("/market/state", headers=headers)
+
+    assert response.status_code == 200
+    resources = {item["resource"] for item in response.json()}
+    assert "reputation" not in resources
+
+
+def test_bootstrap_removes_reputation_market_state():
+    with SessionLocal() as db:
+        sector = db.query(Sector).one()
+        existing = db.query(MarketState).filter(MarketState.sector_id == sector.id, MarketState.resource == "reputation").one_or_none()
+        if existing is None:
+            db.add(
+                MarketState(
+                    sector_id=sector.id,
+                    resource="reputation",
+                    price=1.0,
+                    trend=0.0,
+                    history=[1.0],
+                )
+            )
+            db.commit()
+
+        bootstrap_data(db)
+
+        cleaned = db.query(MarketState).filter(MarketState.sector_id == sector.id, MarketState.resource == "reputation").one_or_none()
+        assert cleaned is None
 
 
 def test_market_refresh_sanitizes_broken_prices(monkeypatch):
